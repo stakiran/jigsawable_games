@@ -134,65 +134,112 @@ function carveRoom(x, y, w, h) {
       map[y + dy][x + dx] = T_FLOOR;
 }
 
+// (x,y)を床にすると2x2の床ブロックができるか判定
+function wouldCreate2x2(x, y) {
+  for (let dy = -1; dy <= 0; dy++) {
+    for (let dx = -1; dx <= 0; dx++) {
+      let allFloor = true;
+      for (let cy = 0; cy < 2; cy++) {
+        for (let cx = 0; cx < 2; cx++) {
+          const nx = x + dx + cx;
+          const ny = y + dy + cy;
+          if (nx < 0 || nx >= MAP_W || ny < 0 || ny >= MAP_H) { allFloor = false; break; }
+          if (nx === x && ny === y) continue; // これから掘るマス
+          if (map[ny][nx] === T_WALL) { allFloor = false; break; }
+        }
+        if (!allFloor) break;
+      }
+      if (allFloor) return true;
+    }
+  }
+  return false;
+}
+
 function carveCorridor(x1, y1, x2, y2) {
   let x = x1, y = y1;
   while (x !== x2) {
-    map[y][x] = T_FLOOR;
+    if (map[y][x] === T_WALL && !wouldCreate2x2(x, y)) map[y][x] = T_FLOOR;
     x += x < x2 ? 1 : -1;
   }
   while (y !== y2) {
-    map[y][x] = T_FLOOR;
+    if (map[y][x] === T_WALL && !wouldCreate2x2(x, y)) map[y][x] = T_FLOOR;
     y += y < y2 ? 1 : -1;
   }
-  map[y][x] = T_FLOOR;
+  if (map[y][x] === T_WALL && !wouldCreate2x2(x, y)) map[y][x] = T_FLOOR;
+}
+
+// プレイヤー位置から階段まで到達可能か判定
+function isReachable(sx, sy, tx, ty) {
+  const visited = [];
+  for (let y = 0; y < MAP_H; y++) visited[y] = new Uint8Array(MAP_W);
+  const queue = [[sx, sy]];
+  visited[sy][sx] = 1;
+  while (queue.length > 0) {
+    const [cx, cy] = queue.shift();
+    if (cx === tx && cy === ty) return true;
+    for (const [ddx, ddy] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+      const nx = cx + ddx;
+      const ny = cy + ddy;
+      if (nx >= 0 && nx < MAP_W && ny >= 0 && ny < MAP_H && !visited[ny][nx] && map[ny][nx] !== T_WALL) {
+        visited[ny][nx] = 1;
+        queue.push([nx, ny]);
+      }
+    }
+  }
+  return false;
 }
 
 function generateDungeon() {
-  initMap();
+  for (let attempt = 0; attempt < 100; attempt++) {
+    initMap();
 
-  // 部屋を配置
-  for (let i = 0; i < ROOM_ATTEMPTS; i++) {
-    const w = MIN_ROOM + Math.floor(Math.random() * (MAX_ROOM - MIN_ROOM + 1));
-    const h = MIN_ROOM + Math.floor(Math.random() * (MAX_ROOM - MIN_ROOM + 1));
-    const x = 1 + Math.floor(Math.random() * (MAP_W - w - 2));
-    const y = 1 + Math.floor(Math.random() * (MAP_H - h - 2));
+    // 部屋を配置
+    for (let i = 0; i < ROOM_ATTEMPTS; i++) {
+      const w = MIN_ROOM + Math.floor(Math.random() * (MAX_ROOM - MIN_ROOM + 1));
+      const h = MIN_ROOM + Math.floor(Math.random() * (MAX_ROOM - MIN_ROOM + 1));
+      const x = 1 + Math.floor(Math.random() * (MAP_W - w - 2));
+      const y = 1 + Math.floor(Math.random() * (MAP_H - h - 2));
 
-    // 重複チェック（1マス余白込み）
-    let overlap = false;
-    for (const r of rooms) {
-      if (x - 1 < r.x + r.w && x + w + 1 > r.x &&
-          y - 1 < r.y + r.h && y + h + 1 > r.y) {
-        overlap = true;
-        break;
+      // 重複チェック（1マス余白込み）
+      let overlap = false;
+      for (const r of rooms) {
+        if (x - 1 < r.x + r.w && x + w + 1 > r.x &&
+            y - 1 < r.y + r.h && y + h + 1 > r.y) {
+          overlap = true;
+          break;
+        }
       }
+      if (overlap) continue;
+
+      carveRoom(x, y, w, h);
+      rooms.push({ x, y, w, h });
     }
-    if (overlap) continue;
 
-    carveRoom(x, y, w, h);
-    rooms.push({ x, y, w, h });
+    // 部屋同士を通路でつなぐ
+    for (let i = 1; i < rooms.length; i++) {
+      const a = rooms[i - 1];
+      const b = rooms[i];
+      const ax = a.x + Math.floor(a.w / 2);
+      const ay = a.y + Math.floor(a.h / 2);
+      const bx = b.x + Math.floor(b.w / 2);
+      const by = b.y + Math.floor(b.h / 2);
+      carveCorridor(ax, ay, bx, by);
+    }
+
+    // プレイヤーを最初の部屋の中央に配置
+    const first = rooms[0];
+    playerX = first.x + Math.floor(first.w / 2);
+    playerY = first.y + Math.floor(first.h / 2);
+
+    // 階段を最後の部屋の中央に配置
+    const last = rooms[rooms.length - 1];
+    const sx = last.x + Math.floor(last.w / 2);
+    const sy = last.y + Math.floor(last.h / 2);
+    map[sy][sx] = T_STAIRS;
+
+    // 接続性チェック — 到達不能なら再生成
+    if (isReachable(playerX, playerY, sx, sy)) return;
   }
-
-  // 部屋同士を通路でつなぐ
-  for (let i = 1; i < rooms.length; i++) {
-    const a = rooms[i - 1];
-    const b = rooms[i];
-    const ax = a.x + Math.floor(a.w / 2);
-    const ay = a.y + Math.floor(a.h / 2);
-    const bx = b.x + Math.floor(b.w / 2);
-    const by = b.y + Math.floor(b.h / 2);
-    carveCorridor(ax, ay, bx, by);
-  }
-
-  // プレイヤーを最初の部屋の中央に配置
-  const first = rooms[0];
-  playerX = first.x + Math.floor(first.w / 2);
-  playerY = first.y + Math.floor(first.h / 2);
-
-  // 階段を最後の部屋の中央に配置
-  const last = rooms[rooms.length - 1];
-  const sx = last.x + Math.floor(last.w / 2);
-  const sy = last.y + Math.floor(last.h / 2);
-  map[sy][sx] = T_STAIRS;
 }
 
 // ============================================================
