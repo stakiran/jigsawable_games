@@ -394,19 +394,19 @@ function tryMove(dx, dy, dash) {
 
       if (map[ny][nx] === T_STAIRS) break;
 
-      // 出入口に隣接したら停止（部屋内・通路共通）
-      if (isAdjacentToExit(playerX, playerY, dx, dy)) break;
-
-      // 通路で分岐点に来たら停止
-      if (!isInRoom(playerX, playerY)) {
+      if (isInRoom(playerX, playerY)) {
+        // 部屋内: 出入口マスと隣接する部屋内マスで停止
+        if (isAdjacentToExitInRoom(playerX, playerY)) break;
+      } else {
+        // 通路: 交差点（分岐点）で停止（部屋内マスは分岐に数えない）
         let openCount = 0;
         for (let ddy = -1; ddy <= 1; ddy++) {
           for (let ddx = -1; ddx <= 1; ddx++) {
             if (ddx === 0 && ddy === 0) continue;
-            if (ddx === -dx && ddy === -dy) continue; // 来た方向は除く
+            if (ddx === -dx && ddy === -dy) continue;
             const cx = playerX + ddx;
             const cy = playerY + ddy;
-            if (cx >= 0 && cx < MAP_W && cy >= 0 && cy < MAP_H && map[cy][cx] !== T_WALL) {
+            if (cx >= 0 && cx < MAP_W && cy >= 0 && cy < MAP_H && map[cy][cx] !== T_WALL && !isInRoom(cx, cy)) {
               openCount++;
             }
           }
@@ -428,20 +428,15 @@ function isInRoom(x, y) {
   return false;
 }
 
-// 部屋の出入口（部屋の辺に隣接する通路マス）に接しているか判定
-function isAdjacentToExit(x, y, dx, dy) {
-  const inRoom = isInRoom(x, y);
-  // 上下左右の隣接マスを見る（進行方向の逆は除く）
+// 部屋内のマスで、上下左右に出入口マス（部屋外の床）が隣接しているか
+function isAdjacentToExitInRoom(x, y) {
   const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
   for (const [ddx, ddy] of dirs) {
-    if (ddx === -dx && ddy === -dy) continue; // 来た方向は除く
     const ax = x + ddx;
     const ay = y + ddy;
     if (ax < 0 || ax >= MAP_W || ay < 0 || ay >= MAP_H) continue;
     if (map[ay][ax] === T_WALL) continue;
-    const neighborInRoom = isInRoom(ax, ay);
-    // 自分が部屋内で隣が部屋外、または自分が部屋外で隣が部屋内 → 出入口
-    if (inRoom !== neighborInRoom) return true;
+    if (!isInRoom(ax, ay)) return true;
   }
   return false;
 }
