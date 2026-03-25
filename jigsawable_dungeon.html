@@ -324,29 +324,95 @@ function drawMinimap() {
 // ============================================================
 //  移動・入力
 // ============================================================
-function tryMove(dx, dy) {
-  const nx = playerX + dx;
-  const ny = playerY + dy;
-  if (nx < 0 || nx >= MAP_W || ny < 0 || ny >= MAP_H) return;
-  if (map[ny][nx] === T_WALL) return;
+function tryMove(dx, dy, dash) {
+  if (!dash) {
+    // 通常移動：1マス
+    const nx = playerX + dx;
+    const ny = playerY + dy;
+    if (nx < 0 || nx >= MAP_W || ny < 0 || ny >= MAP_H) return;
+    if (map[ny][nx] === T_WALL) return;
 
-  playerX = nx;
-  playerY = ny;
+    playerX = nx;
+    playerY = ny;
 
-  // 階段に乗ったら次のフロアへ
-  if (map[ny][nx] === T_STAIRS) {
-    if (currentFloor >= TOTAL_FLOORS) {
-      alert('全 ' + TOTAL_FLOORS + ' フロア踏破！おめでとう！');
-      currentFloor = 1;
-    } else {
-      currentFloor++;
+    // 階段に乗ったら次のフロアへ
+    if (map[ny][nx] === T_STAIRS) {
+      descend();
     }
-    generateDungeon();
+  } else {
+    // ダッシュ：壁か階段にあたるまで進む
+    while (true) {
+      const nx = playerX + dx;
+      const ny = playerY + dy;
+      if (nx < 0 || nx >= MAP_W || ny < 0 || ny >= MAP_H) break;
+      if (map[ny][nx] === T_WALL) break;
+
+      playerX = nx;
+      playerY = ny;
+      computeVisibility();
+
+      if (map[ny][nx] === T_STAIRS) break;
+
+      // 出入口に隣接したら停止（部屋内・通路共通）
+      if (isAdjacentToExit(playerX, playerY, dx, dy)) break;
+
+      // 通路で分岐点に来たら停止
+      if (!isInRoom(playerX, playerY)) {
+        let openCount = 0;
+        for (let ddy = -1; ddy <= 1; ddy++) {
+          for (let ddx = -1; ddx <= 1; ddx++) {
+            if (ddx === 0 && ddy === 0) continue;
+            if (ddx === -dx && ddy === -dy) continue; // 来た方向は除く
+            const cx = playerX + ddx;
+            const cy = playerY + ddy;
+            if (cx >= 0 && cx < MAP_W && cy >= 0 && cy < MAP_H && map[cy][cx] !== T_WALL) {
+              openCount++;
+            }
+          }
+        }
+        if (openCount > 1) break;
+      }
+    }
   }
 
   computeVisibility();
   updateInfo();
   draw();
+}
+
+function isInRoom(x, y) {
+  for (const r of rooms) {
+    if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) return true;
+  }
+  return false;
+}
+
+// 部屋の出入口（部屋の辺に隣接する通路マス）に接しているか判定
+function isAdjacentToExit(x, y, dx, dy) {
+  const inRoom = isInRoom(x, y);
+  // 上下左右の隣接マスを見る（進行方向の逆は除く）
+  const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+  for (const [ddx, ddy] of dirs) {
+    if (ddx === -dx && ddy === -dy) continue; // 来た方向は除く
+    const ax = x + ddx;
+    const ay = y + ddy;
+    if (ax < 0 || ax >= MAP_W || ay < 0 || ay >= MAP_H) continue;
+    if (map[ay][ax] === T_WALL) continue;
+    const neighborInRoom = isInRoom(ax, ay);
+    // 自分が部屋内で隣が部屋外、または自分が部屋外で隣が部屋内 → 出入口
+    if (inRoom !== neighborInRoom) return true;
+  }
+  return false;
+}
+
+function descend() {
+  if (currentFloor >= TOTAL_FLOORS) {
+    alert('全 ' + TOTAL_FLOORS + ' フロア踏破！おめでとう！');
+    currentFloor = 1;
+  } else {
+    currentFloor++;
+  }
+  generateDungeon();
 }
 
 function updateInfo() {
@@ -355,16 +421,17 @@ function updateInfo() {
 
 // キーボード入力
 document.addEventListener('keydown', (e) => {
+  const dash = e.shiftKey;
   switch (e.key) {
-    case 'ArrowUp':    case 'w': case 'k': e.preventDefault(); tryMove(0, -1); break;
-    case 'ArrowDown':  case 's': case 'j': e.preventDefault(); tryMove(0,  1); break;
-    case 'ArrowLeft':  case 'a': case 'h': e.preventDefault(); tryMove(-1, 0); break;
-    case 'ArrowRight': case 'd': case 'l': e.preventDefault(); tryMove( 1, 0); break;
+    case 'ArrowUp':    case 'w': case 'k': case 'W': case 'K': e.preventDefault(); tryMove(0, -1, dash); break;
+    case 'ArrowDown':  case 's': case 'j': case 'S': case 'J': e.preventDefault(); tryMove(0,  1, dash); break;
+    case 'ArrowLeft':  case 'a': case 'h': case 'A': case 'H': e.preventDefault(); tryMove(-1, 0, dash); break;
+    case 'ArrowRight': case 'd': case 'l': case 'D': case 'L': e.preventDefault(); tryMove( 1, 0, dash); break;
     // 斜め移動
-    case 'y': e.preventDefault(); tryMove(-1, -1); break;
-    case 'u': e.preventDefault(); tryMove( 1, -1); break;
-    case 'b': e.preventDefault(); tryMove(-1,  1); break;
-    case 'n': e.preventDefault(); tryMove( 1,  1); break;
+    case 'y': case 'Y': e.preventDefault(); tryMove(-1, -1, dash); break;
+    case 'u': case 'U': e.preventDefault(); tryMove( 1, -1, dash); break;
+    case 'b': case 'B': e.preventDefault(); tryMove(-1,  1, dash); break;
+    case 'n': case 'N': e.preventDefault(); tryMove( 1,  1, dash); break;
   }
 });
 
