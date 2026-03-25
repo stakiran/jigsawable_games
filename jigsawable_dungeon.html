@@ -20,6 +20,9 @@
   #game-wrap {
     display: flex; gap: 10px; align-items: flex-start;
   }
+  #side {
+    display: flex; flex-direction: column; gap: 10px;
+  }
   canvas {
     border: 1px solid #3a3a55;
     image-rendering: pixelated;
@@ -27,13 +30,33 @@
   #minimap {
     border: 1px solid #3a3a55;
   }
+  #controls {
+    font-size: 12px; line-height: 1.6;
+    color: #7a7a9a; border: 1px solid #3a3a55;
+    padding: 8px 12px; border-radius: 4px;
+  }
+  .ctrl-title {
+    color: #a5a5c0; font-weight: bold; margin-top: 4px;
+  }
+  .ctrl-title:first-child { margin-top: 0; }
+  .ctrl-row { padding-left: 8px; }
 </style>
 </head>
 <body>
 <div id="info">Floor: 1 / 5</div>
 <div id="game-wrap">
   <canvas id="cv"></canvas>
-  <canvas id="minimap"></canvas>
+  <div id="side">
+    <canvas id="minimap"></canvas>
+    <div id="controls">
+      <div class="ctrl-title">Move</div>
+      <div class="ctrl-row">Arrow keys / WASD / hjkl</div>
+      <div class="ctrl-title">Diagonal</div>
+      <div class="ctrl-row">y u b n</div>
+      <div class="ctrl-title">Dash</div>
+      <div class="ctrl-row">Shift + direction</div>
+    </div>
+  </div>
 </div>
 <script>
 // ============================================================
@@ -428,10 +451,10 @@ document.addEventListener('keydown', (e) => {
     case 'ArrowLeft':  case 'a': case 'h': case 'A': case 'H': e.preventDefault(); tryMove(-1, 0, dash); break;
     case 'ArrowRight': case 'd': case 'l': case 'D': case 'L': e.preventDefault(); tryMove( 1, 0, dash); break;
     // 斜め移動
-    case 'y': case 'Y': e.preventDefault(); tryMove(-1, -1, dash); break;
-    case 'u': case 'U': e.preventDefault(); tryMove( 1, -1, dash); break;
-    case 'b': case 'B': e.preventDefault(); tryMove(-1,  1, dash); break;
-    case 'n': case 'N': e.preventDefault(); tryMove( 1,  1, dash); break;
+    case 'q': case 'Q': e.preventDefault(); tryMove(-1, -1, dash); break;
+    case 'e': case 'E': e.preventDefault(); tryMove( 1, -1, dash); break;
+    case 'z': case 'Z': e.preventDefault(); tryMove(-1,  1, dash); break;
+    case 'c': case 'C': e.preventDefault(); tryMove( 1,  1, dash); break;
   }
 });
 
