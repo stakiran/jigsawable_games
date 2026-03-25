@@ -87,8 +87,9 @@
     <button class="btn" onclick="newGame()">新規</button>
   </div>
   <div class="hint">
-    <kbd>X</kbd> 方向転換　
-    <kbd>Z</kbd> 移動　
+    <kbd>Z</kbd> 反時計回り
+    <kbd>X</kbd> 時計回り
+    <kbd>Space</kbd> 移動
     <kbd>Tab</kbd> 表示切替
   </div>
 </div>
@@ -620,8 +621,9 @@ function updateUI() {
 // ─── Input ───
 document.addEventListener('keydown', e => {
   switch (e.key) {
+    case 'z': case 'Z': e.preventDefault(); cycleNeighbor(-1); break;
     case 'x': case 'X': e.preventDefault(); cycleNeighbor(1); break;
-    case 'z': case 'Z': e.preventDefault(); moveToSelected(); break;
+    case ' ': e.preventDefault(); moveToSelected(); break;
     case 'Tab': e.preventDefault(); setView(viewMode === 'explore' ? 'map' : 'explore'); break;
   }
 });
