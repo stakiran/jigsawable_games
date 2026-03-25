@@ -17,15 +17,24 @@
     font-size: 14px; margin-bottom: 6px;
     letter-spacing: 0.05em;
   }
+  #game-wrap {
+    display: flex; gap: 10px; align-items: flex-start;
+  }
   canvas {
     border: 1px solid #3a3a55;
     image-rendering: pixelated;
+  }
+  #minimap {
+    border: 1px solid #3a3a55;
   }
 </style>
 </head>
 <body>
 <div id="info">Floor: 1 / 5</div>
-<canvas id="cv"></canvas>
+<div id="game-wrap">
+  <canvas id="cv"></canvas>
+  <canvas id="minimap"></canvas>
+</div>
 <script>
 // ============================================================
 //  定数（調整用パラメーター）
@@ -56,6 +65,9 @@ const COL_PLAYER  = '#f0e060';
 const COL_FOG     = '#08080b';
 const COL_VISITED = 'rgba(160,160,190,0.08)';
 
+// ミニマップ
+const MINI_SCALE = 2;       // ミニマップ 1マスあたりのピクセル
+
 // ============================================================
 //  状態
 // ============================================================
@@ -69,10 +81,14 @@ let rooms = [];
 
 const canvas = document.getElementById('cv');
 const ctx = canvas.getContext('2d');
+const miniCanvas = document.getElementById('minimap');
+const mctx = miniCanvas.getContext('2d');
 const info = document.getElementById('info');
 
 canvas.width  = VIEW_W * TILE;
 canvas.height = VIEW_H * TILE;
+miniCanvas.width  = MAP_W * MINI_SCALE;
+miniCanvas.height = MAP_H * MINI_SCALE;
 
 // ============================================================
 //  ダンジョン生成
@@ -274,6 +290,35 @@ function draw() {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('@', ppx + TILE / 2, ppy + TILE / 2 + 1);
+
+  // ミニマップ描画
+  drawMinimap();
+}
+
+function drawMinimap() {
+  const s = MINI_SCALE;
+  mctx.fillStyle = COL_FOG;
+  mctx.fillRect(0, 0, miniCanvas.width, miniCanvas.height);
+
+  for (let y = 0; y < MAP_H; y++) {
+    for (let x = 0; x < MAP_W; x++) {
+      if (!revealed[y][x]) continue;
+      const tile = map[y][x];
+      if (tile === T_WALL) {
+        mctx.fillStyle = '#2a2a3e';
+      } else if (tile === T_STAIRS) {
+        mctx.fillStyle = COL_STAIRS;
+      } else {
+        mctx.fillStyle = '#5a5a7a';
+      }
+      mctx.fillRect(x * s, y * s, s, s);
+    }
+  }
+
+  // プレイヤー位置
+  mctx.fillStyle = COL_PLAYER;
+  const ps = Math.max(s, 3);
+  mctx.fillRect(playerX * s - Math.floor(ps / 2), playerY * s - Math.floor(ps / 2), ps + 1, ps + 1);
 }
 
 // ============================================================
