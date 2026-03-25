@@ -338,6 +338,17 @@ function drawMinimap() {
     }
   }
 
+  // 階段位置（探索済みなら表示）
+  for (let y = 0; y < MAP_H; y++) {
+    for (let x = 0; x < MAP_W; x++) {
+      if (map[y][x] === T_STAIRS && revealed[y][x]) {
+        mctx.fillStyle = '#e03040';
+        const ss = Math.max(s, 3);
+        mctx.fillRect(x * s - Math.floor(ss / 2), y * s - Math.floor(ss / 2), ss + 1, ss + 1);
+      }
+    }
+  }
+
   // プレイヤー位置
   mctx.fillStyle = COL_PLAYER;
   const ps = Math.max(s, 3);
