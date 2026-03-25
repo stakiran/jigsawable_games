@@ -62,8 +62,8 @@
 // ============================================================
 //  定数（調整用パラメーター）
 // ============================================================
-const MAP_W = 162;          // フロアマップ横マス数
-const MAP_H = 96;           // フロアマップ縦マス数
+const MAP_W = 54;          // フロアマップ横マス数
+const MAP_H = 32;           // フロアマップ縦マス数
 const TOTAL_FLOORS = 5;     // 合計フロア数
 
 const VIEW_W = 19;          // 画面表示 横マス数（奇数推奨）
@@ -219,10 +219,17 @@ function computeVisibility() {
   for (const r of rooms) {
     if (playerX >= r.x && playerX < r.x + r.w &&
         playerY >= r.y && playerY < r.y + r.h) {
-      for (let dy = 0; dy < r.h; dy++) {
-        for (let dx = 0; dx < r.w; dx++) {
-          visible[r.y + dy][r.x + dx] = 1;
-          revealed[r.y + dy][r.x + dx] = 1;
+      for (let dy = -1; dy <= r.h; dy++) {
+        for (let dx = -1; dx <= r.w; dx++) {
+          const rx = r.x + dx;
+          const ry = r.y + dy;
+          if (rx < 0 || rx >= MAP_W || ry < 0 || ry >= MAP_H) continue;
+          // 部屋内は無条件、部屋外(周囲1マス)は床・階段のみ（出入口）
+          const inside = dx >= 0 && dx < r.w && dy >= 0 && dy < r.h;
+          if (inside || map[ry][rx] !== T_WALL) {
+            visible[ry][rx] = 1;
+            revealed[ry][rx] = 1;
+          }
         }
       }
       break;
