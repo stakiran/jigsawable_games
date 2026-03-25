@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jigsawable Dungeon</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #08080b; color: #a5a5c0;
+    font-family: monospace;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 10px;
+    overflow: hidden;
+  }
+  #info {
+    font-size: 14px; margin-bottom: 6px;
+    letter-spacing: 0.05em;
+  }
+  canvas {
+    border: 1px solid #3a3a55;
+    image-rendering: pixelated;
+  }
+</style>
+</head>
+<body>
+<div id="info">Floor: 1 / 5</div>
+<canvas id="cv"></canvas>
+<script>
+// ============================================================
+//  定数（調整用パラメーター）
+// ============================================================
+const MAP_W = 162;          // フロアマップ横マス数
+const MAP_H = 96;           // フロアマップ縦マス数
+const TOTAL_FLOORS = 5;     // 合計フロア数
+
+const VIEW_W = 19;          // 画面表示 横マス数（奇数推奨）
+const VIEW_H = 15;          // 画面表示 縦マス数（奇数推奨）
+const TILE = 28;            // 1マスのピクセルサイズ
+
+// ダンジョン生成パラメーター
+const MIN_ROOM = 5;         // 部屋の最小辺
+const MAX_ROOM = 13;        // 部屋の最大辺
+const ROOM_ATTEMPTS = 60;   // 部屋配置試行回数
+
+// タイルID
+const T_WALL = 0;
+const T_FLOOR = 1;
+const T_STAIRS = 2;
+
+// 色
+const COL_WALL    = '#1a1a2e';
+const COL_FLOOR   = '#2a2a3e';
+const COL_STAIRS  = '#6366f1';
+const COL_PLAYER  = '#f0e060';
+const COL_FOG     = '#08080b';
+const COL_VISITED = 'rgba(160,160,190,0.08)';
+
+// ============================================================
+//  状態
+// ============================================================
+let currentFloor = 1;
+let map = [];           // 2D array [y][x]
+let visible = [];       // 現在視界内
+let revealed = [];      // 一度でも見たマス
+let playerX = 0;
+let playerY = 0;
+let rooms = [];
+
+const canvas = document.getElementById('cv');
+const ctx = canvas.getContext('2d');
+const info = document.getElementById('info');
+
+canvas.width  = VIEW_W * TILE;
+canvas.height = VIEW_H * TILE;
+
+// ============================================================
+//  ダンジョン生成
+// ============================================================
+function initMap() {
+  map = [];
+  visible = [];
+  revealed = [];
+  rooms = [];
+  for (let y = 0; y < MAP_H; y++) {
+    map[y] = new Uint8Array(MAP_W);           // 全部壁(0)
+    visible[y] = new Uint8Array(MAP_W);
+    revealed[y] = new Uint8Array(MAP_W);
+  }
+}
+
+function carveRoom(x, y, w, h) {
+  for (let dy = 0; dy < h; dy++)
+    for (let dx = 0; dx < w; dx++)
+      map[y + dy][x + dx] = T_FLOOR;
+}
+
+function carveCorridor(x1, y1, x2, y2) {
+  let x = x1, y = y1;
+  while (x !== x2) {
+    map[y][x] = T_FLOOR;
+    x += x < x2 ? 1 : -1;
+  }
+  while (y !== y2) {
+    map[y][x] = T_FLOOR;
+    y += y < y2 ? 1 : -1;
+  }
+  map[y][x] = T_FLOOR;
+}
+
+function generateDungeon() {
+  initMap();
+
+  // 部屋を配置
+  for (let i = 0; i < ROOM_ATTEMPTS; i++) {
+    const w = MIN_ROOM + Math.floor(Math.random() * (MAX_ROOM - MIN_ROOM + 1));
+    const h = MIN_ROOM + Math.floor(Math.random() * (MAX_ROOM - MIN_ROOM + 1));
+    const x = 1 + Math.floor(Math.random() * (MAP_W - w - 2));
+    const y = 1 + Math.floor(Math.random() * (MAP_H - h - 2));
+
+    // 重複チェック（1マス余白込み）
+    let overlap = false;
+    for (const r of rooms) {
+      if (x - 1 < r.x + r.w && x + w + 1 > r.x &&
+          y - 1 < r.y + r.h && y + h + 1 > r.y) {
+        overlap = true;
+        break;
+      }
+    }
+    if (overlap) continue;
+
+    carveRoom(x, y, w, h);
+    rooms.push({ x, y, w, h });
+  }
+
+  // 部屋同士を通路でつなぐ
+  for (let i = 1; i < rooms.length; i++) {
+    const a = rooms[i - 1];
+    const b = rooms[i];
+    const ax = a.x + Math.floor(a.w / 2);
+    const ay = a.y + Math.floor(a.h / 2);
+    const bx = b.x + Math.floor(b.w / 2);
+    const by = b.y + Math.floor(b.h / 2);
+    carveCorridor(ax, ay, bx, by);
+  }
+
+  // プレイヤーを最初の部屋の中央に配置
+  const first = rooms[0];
+  playerX = first.x + Math.floor(first.w / 2);
+  playerY = first.y + Math.floor(first.h / 2);
+
+  // 階段を最後の部屋の中央に配置
+  const last = rooms[rooms.length - 1];
+  const sx = last.x + Math.floor(last.w / 2);
+  const sy = last.y + Math.floor(last.h / 2);
+  map[sy][sx] = T_STAIRS;
+}
+
+// ============================================================
+//  視界計算（簡易：プレイヤーがいる部屋 + 隣接通路）
+// ============================================================
+function computeVisibility() {
+  // リセット
+  for (let y = 0; y < MAP_H; y++) visible[y].fill(0);
+
+  // プレイヤー周囲を常に見せる
+  const SIGHT = 4;
+  for (let dy = -SIGHT; dy <= SIGHT; dy++) {
+    for (let dx = -SIGHT; dx <= SIGHT; dx++) {
+      const nx = playerX + dx;
+      const ny = playerY + dy;
+      if (nx >= 0 && nx < MAP_W && ny >= 0 && ny < MAP_H) {
+        visible[ny][nx] = 1;
+        revealed[ny][nx] = 1;
+      }
+    }
+  }
+
+  // プレイヤーが部屋内にいたらその部屋全体を可視化
+  for (const r of rooms) {
+    if (playerX >= r.x && playerX < r.x + r.w &&
+        playerY >= r.y && playerY < r.y + r.h) {
+      for (let dy = 0; dy < r.h; dy++) {
+        for (let dx = 0; dx < r.w; dx++) {
+          visible[r.y + dy][r.x + dx] = 1;
+          revealed[r.y + dy][r.x + dx] = 1;
+        }
+      }
+      break;
+    }
+  }
+}
+
+// ============================================================
+//  描画
+// ============================================================
+function draw() {
+  ctx.fillStyle = COL_FOG;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // カメラオフセット（プレイヤー中心）
+  const camX = playerX - Math.floor(VIEW_W / 2);
+  const camY = playerY - Math.floor(VIEW_H / 2);
+
+  for (let vy = 0; vy < VIEW_H; vy++) {
+    for (let vx = 0; vx < VIEW_W; vx++) {
+      const mx = camX + vx;
+      const my = camY + vy;
+
+      if (mx < 0 || mx >= MAP_W || my < 0 || my >= MAP_H) continue;
+
+      const isVisible = visible[my][mx];
+      const isRevealed = revealed[my][mx];
+      const tile = map[my][mx];
+
+      const px = vx * TILE;
+      const py = vy * TILE;
+
+      if (isVisible) {
+        if (tile === T_WALL) {
+          ctx.fillStyle = COL_WALL;
+        } else if (tile === T_STAIRS) {
+          ctx.fillStyle = COL_STAIRS;
+        } else {
+          ctx.fillStyle = COL_FLOOR;
+        }
+        ctx.fillRect(px, py, TILE, TILE);
+
+        // 壁グリッド線
+        if (tile === T_WALL) {
+          ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+          ctx.strokeRect(px, py, TILE, TILE);
+        }
+
+        // 階段マーク
+        if (tile === T_STAIRS) {
+          ctx.fillStyle = '#fff';
+          ctx.font = `${TILE - 4}px monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('▽', px + TILE / 2, py + TILE / 2 + 1);
+        }
+      } else if (isRevealed) {
+        // 一度見た場所は薄く表示
+        if (tile === T_WALL) {
+          ctx.fillStyle = COL_WALL;
+          ctx.fillRect(px, py, TILE, TILE);
+          ctx.fillStyle = 'rgba(8,8,11,0.6)';
+          ctx.fillRect(px, py, TILE, TILE);
+        } else {
+          ctx.fillStyle = COL_VISITED;
+          ctx.fillRect(px, py, TILE, TILE);
+          if (tile === T_STAIRS) {
+            ctx.fillStyle = 'rgba(99,102,241,0.3)';
+            ctx.fillRect(px, py, TILE, TILE);
+            ctx.fillStyle = 'rgba(255,255,255,0.3)';
+            ctx.font = `${TILE - 4}px monospace`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('▽', px + TILE / 2, py + TILE / 2 + 1);
+          }
+        }
+      }
+    }
+  }
+
+  // プレイヤー描画（常に画面中央）
+  const ppx = Math.floor(VIEW_W / 2) * TILE;
+  const ppy = Math.floor(VIEW_H / 2) * TILE;
+  ctx.fillStyle = COL_PLAYER;
+  ctx.fillRect(ppx + 4, ppy + 4, TILE - 8, TILE - 8);
+  ctx.fillStyle = '#000';
+  ctx.font = `${TILE - 10}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('@', ppx + TILE / 2, ppy + TILE / 2 + 1);
+}
+
+// ============================================================
+//  移動・入力
+// ============================================================
+function tryMove(dx, dy) {
+  const nx = playerX + dx;
+  const ny = playerY + dy;
+  if (nx < 0 || nx >= MAP_W || ny < 0 || ny >= MAP_H) return;
+  if (map[ny][nx] === T_WALL) return;
+
+  playerX = nx;
+  playerY = ny;
+
+  // 階段に乗ったら次のフロアへ
+  if (map[ny][nx] === T_STAIRS) {
+    if (currentFloor >= TOTAL_FLOORS) {
+      alert('全 ' + TOTAL_FLOORS + ' フロア踏破！おめでとう！');
+      currentFloor = 1;
+    } else {
+      currentFloor++;
+    }
+    generateDungeon();
+  }
+
+  computeVisibility();
+  updateInfo();
+  draw();
+}
+
+function updateInfo() {
+  info.textContent = `Floor: ${currentFloor} / ${TOTAL_FLOORS}`;
+}
+
+// キーボード入力
+document.addEventListener('keydown', (e) => {
+  switch (e.key) {
+    case 'ArrowUp':    case 'w': case 'k': e.preventDefault(); tryMove(0, -1); break;
+    case 'ArrowDown':  case 's': case 'j': e.preventDefault(); tryMove(0,  1); break;
+    case 'ArrowLeft':  case 'a': case 'h': e.preventDefault(); tryMove(-1, 0); break;
+    case 'ArrowRight': case 'd': case 'l': e.preventDefault(); tryMove( 1, 0); break;
+    // 斜め移動
+    case 'y': e.preventDefault(); tryMove(-1, -1); break;
+    case 'u': e.preventDefault(); tryMove( 1, -1); break;
+    case 'b': e.preventDefault(); tryMove(-1,  1); break;
+    case 'n': e.preventDefault(); tryMove( 1,  1); break;
+  }
+});
+
+// ============================================================
+//  初期化
+// ============================================================
+generateDungeon();
+computeVisibility();
+updateInfo();
+draw();
+</script>
+</body>
+</html>
