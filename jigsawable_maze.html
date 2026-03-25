@@ -373,11 +373,30 @@ function moveToSelected() {
   if (selectedNeighborIdx >= list.length) selectedNeighborIdx = 0;
 
   const target = list[selectedNeighborIdx];
+  const prevNode = curNode;
   curNode = target;
   stepCount++;
   if (!visitStep[curNode]) visitedCount++;
   visitStep[curNode] = stepCount;
-  selectedNeighborIdx = 0; // reset selection
+
+  // 進行方向(prevNode→curNode)に最も近い隣接ノードを自動選択
+  const newList = getNeighborList();
+  if (newList.length > 0) {
+    const dx = nodes[curNode].x - nodes[prevNode].x;
+    const dy = nodes[curNode].y - nodes[prevNode].y;
+    const moveAngle = Math.atan2(dy, dx);
+    let bestIdx = 0, bestDiff = Infinity;
+    for (let i = 0; i < newList.length; i++) {
+      const nb = nodes[newList[i]];
+      const a = Math.atan2(nb.y - nodes[curNode].y, nb.x - nodes[curNode].x);
+      let diff = Math.abs(a - moveAngle);
+      if (diff > Math.PI) diff = 2 * Math.PI - diff;
+      if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+    }
+    selectedNeighborIdx = bestIdx;
+  } else {
+    selectedNeighborIdx = 0;
+  }
 
   if (curNode === goalNode) {
     completed = true;
