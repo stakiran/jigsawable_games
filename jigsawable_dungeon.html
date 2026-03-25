@@ -40,11 +40,48 @@
   }
   .ctrl-title:first-child { margin-top: 0; }
   .ctrl-row { padding-left: 8px; }
+
+  /* 難易度選択画面 */
+  #difficulty-screen {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: #08080b;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    z-index: 100;
+  }
+  #difficulty-screen h1 {
+    color: #a5a5c0; font-family: monospace; font-size: 28px;
+    margin-bottom: 32px; letter-spacing: 0.1em;
+  }
+  .diff-buttons {
+    display: flex; flex-direction: column; gap: 12px; align-items: center;
+  }
+  .diff-btn {
+    font-family: monospace; font-size: 16px;
+    background: #1a1a2e; color: #a5a5c0; border: 1px solid #3a3a55;
+    padding: 12px 40px; cursor: pointer; border-radius: 4px;
+    width: 260px; text-align: center;
+    transition: background 0.15s, color 0.15s;
+  }
+  .diff-btn:hover, .diff-btn:focus {
+    background: #2a2a4e; color: #e0e0f0; outline: none;
+  }
+  .diff-btn .diff-size {
+    font-size: 11px; color: #5a5a7a; margin-top: 2px;
+  }
 </style>
 </head>
 <body>
-<div id="info">Floor: 1 / 5</div>
-<div id="game-wrap">
+<div id="difficulty-screen">
+  <h1>Jigsawable Dungeon</h1>
+  <div class="diff-buttons">
+    <button class="diff-btn" data-diff="easy">Easy<div class="diff-size">27 x 16</div></button>
+    <button class="diff-btn" data-diff="normal">Normal<div class="diff-size">54 x 32</div></button>
+    <button class="diff-btn" data-diff="hard">Hard<div class="diff-size">108 x 64</div></button>
+    <button class="diff-btn" data-diff="veryhard">Very Hard<div class="diff-size">162 x 96</div></button>
+  </div>
+</div>
+<div id="info" style="display:none">Floor: 1 / 5</div>
+<div id="game-wrap" style="display:none">
   <canvas id="cv"></canvas>
   <div id="side">
     <canvas id="minimap"></canvas>
@@ -62,18 +99,26 @@
 // ============================================================
 //  定数（調整用パラメーター）
 // ============================================================
-const MAP_W = 108;          // フロアマップ横マス数
-const MAP_H = 64;           // フロアマップ縦マス数
-const TOTAL_FLOORS = 5;     // 合計フロア数
+// 難易度設定
+const DIFFICULTIES = {
+  easy:     { w: 27,  h: 16, roomAttempts: 30,  minRoom: 4, maxRoom: 9  },
+  normal:   { w: 54,  h: 32, roomAttempts: 60,  minRoom: 5, maxRoom: 13 },
+  hard:     { w: 108, h: 64, roomAttempts: 120, minRoom: 5, maxRoom: 15 },
+  veryhard: { w: 162, h: 96, roomAttempts: 180, minRoom: 6, maxRoom: 17 },
+};
 
-const VIEW_W = 19;          // 画面表示 横マス数（奇数推奨）
-const VIEW_H = 15;          // 画面表示 縦マス数（奇数推奨）
-const TILE = 28;            // 1マスのピクセルサイズ
+let MAP_W = 54;              // フロアマップ横マス数
+let MAP_H = 32;              // フロアマップ縦マス数
+const TOTAL_FLOORS = 5;      // 合計フロア数
+
+const VIEW_W = 19;           // 画面表示 横マス数（奇数推奨）
+const VIEW_H = 15;           // 画面表示 縦マス数（奇数推奨）
+const TILE = 28;             // 1マスのピクセルサイズ
 
 // ダンジョン生成パラメーター
-const MIN_ROOM = 5;         // 部屋の最小辺
-const MAX_ROOM = 13;        // 部屋の最大辺
-const ROOM_ATTEMPTS = 60;   // 部屋配置試行回数
+let MIN_ROOM = 5;            // 部屋の最小辺
+let MAX_ROOM = 13;           // 部屋の最大辺
+let ROOM_ATTEMPTS = 60;      // 部屋配置試行回数
 
 // タイルID
 const T_WALL = 0;
@@ -108,10 +153,7 @@ const miniCanvas = document.getElementById('minimap');
 const mctx = miniCanvas.getContext('2d');
 const info = document.getElementById('info');
 
-canvas.width  = VIEW_W * TILE;
-canvas.height = VIEW_H * TILE;
-miniCanvas.width  = MAP_W * MINI_SCALE;
-miniCanvas.height = MAP_H * MINI_SCALE;
+// キャンバスサイズは startGame() で設定
 
 // ============================================================
 //  ダンジョン生成
@@ -534,12 +576,41 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ============================================================
-//  初期化
+//  難易度選択・初期化
 // ============================================================
-generateDungeon();
-computeVisibility();
-updateInfo();
-draw();
+const diffScreen = document.getElementById('difficulty-screen');
+const gameWrap = document.getElementById('game-wrap');
+
+function startGame(diffKey) {
+  const diff = DIFFICULTIES[diffKey];
+  MAP_W = diff.w;
+  MAP_H = diff.h;
+  MIN_ROOM = diff.minRoom;
+  MAX_ROOM = diff.maxRoom;
+  ROOM_ATTEMPTS = diff.roomAttempts;
+
+  // キャンバスサイズ更新
+  canvas.width  = VIEW_W * TILE;
+  canvas.height = VIEW_H * TILE;
+  miniCanvas.width  = MAP_W * MINI_SCALE;
+  miniCanvas.height = MAP_H * MINI_SCALE;
+
+  // UI切替
+  diffScreen.style.display = 'none';
+  info.style.display = '';
+  gameWrap.style.display = '';
+
+  // ゲーム開始
+  currentFloor = 1;
+  generateDungeon();
+  computeVisibility();
+  updateInfo();
+  draw();
+}
+
+document.querySelectorAll('.diff-btn').forEach(btn => {
+  btn.addEventListener('click', () => startGame(btn.dataset.diff));
+});
 </script>
 </body>
 </html>
